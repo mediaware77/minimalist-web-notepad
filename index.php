@@ -2,7 +2,7 @@
 
 // Path to the directory to save the notes in, without trailing slash.
 // Should be outside the document root, if possible.
-$save_path = '_tmp';
+$save_path = getenv('NOTEPAD_DATA_DIR') ?: '_tmp';
 
 // Disable caching.
 header('Cache-Control: no-store');
@@ -10,8 +10,8 @@ header('Cache-Control: no-store');
 // If no note name is provided, or if the name is too long, or if it contains invalid characters.
 if (!isset($_GET['note']) || strlen($_GET['note']) > 64 || !preg_match('/^[a-zA-Z0-9_-]+$/', $_GET['note'])) {
 
-    // Generate a name with 5 random unambiguous characters. Redirect to it.
-    header("Location: " . substr(str_shuffle('234579abcdefghjkmnpqrstwxyz'), -5));
+    // Generate an unguessable note name for public deployments (128 bits).
+    header("Location: " . bin2hex(random_bytes(16)));
     die;
 }
 
@@ -20,7 +20,10 @@ $path = $save_path . '/' . $_GET['note'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $text = isset($_POST['text']) ? $_POST['text'] : file_get_contents("php://input");
     // Update file.
-    file_put_contents($path, $text);
+    if (file_put_contents($path, $text, LOCK_EX) === false) {
+        http_response_code(500);
+        die('Unable to save note.');
+    }
 
     // If provided input is empty, delete file.
     if (!strlen($text)) {
@@ -30,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Print raw file when explicitly requested, or if the client is curl or wget.
-if (isset($_GET['raw']) || strpos($_SERVER['HTTP_USER_AGENT'], 'curl') === 0 || strpos($_SERVER['HTTP_USER_AGENT'], 'Wget') === 0) {
+if (isset($_GET['raw']) || strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'curl') === 0 || strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'Wget') === 0) {
     if (is_file($path)) {
         header('Content-type: text/plain');
         readfile($path);
@@ -112,10 +115,12 @@ function uploadContent() {
         request.open('POST', window.location.href, true);
         request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
         request.onload = function() {
-            if (request.readyState === 4) {
+            if (request.readyState === 4 && request.status >= 200 && request.status < 300) {
 
                 // If the request has ended, check again after 1 second.
                 content = temp;
+                setTimeout(uploadContent, 1000);
+            } else {
                 setTimeout(uploadContent, 1000);
             }
         }

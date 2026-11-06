@@ -1,4 +1,9 @@
 Options -Indexes
+LimitRequestBody 1048576
+<IfModule mod_headers.c>
+    Header always set Referrer-Policy "no-referrer"
+    Header always set X-Content-Type-Options "nosniff"
+</IfModule>
 RewriteEngine On
 RewriteRule ^([a-zA-Z0-9_-]+)$ index.php?note=$1 [QSA]
 
