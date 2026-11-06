@@ -18,7 +18,16 @@ if (!isset($_GET['note']) || strlen($_GET['note']) > 64 || !preg_match('/^[a-zA-
 $path = $save_path . '/' . $_GET['note'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Reject oversized requests before PHP/Apache reads a truncated body.
+    if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 1048576) {
+        http_response_code(413);
+        die('Note exceeds the 1 MiB request limit.');
+    }
     $text = isset($_POST['text']) ? $_POST['text'] : file_get_contents("php://input");
+    if (!is_string($text)) {
+        http_response_code(400);
+        die('Invalid note content.');
+    }
     // Update file.
     if (file_put_contents($path, $text, LOCK_EX) === false) {
         http_response_code(500);
@@ -118,13 +127,16 @@ function uploadContent() {
             if (request.readyState === 4 && request.status >= 200 && request.status < 300) {
 
                 // If the request has ended, check again after 1 second.
+                document.title = noteTitle;
                 content = temp;
                 setTimeout(uploadContent, 1000);
             } else {
+                document.title = 'Save failed - ' + noteTitle;
                 setTimeout(uploadContent, 1000);
             }
         }
         request.onerror = function() {
+            document.title = 'Save failed - ' + noteTitle;
 
             // Try again after 1 second.
             setTimeout(uploadContent, 1000);
@@ -145,6 +157,7 @@ function uploadContent() {
 var textarea = document.getElementById('content');
 var printable = document.getElementById('printable');
 var content = textarea.value;
+var noteTitle = document.title;
 
 // Initialize the printable contents with the initial value of the textarea.
 printable.appendChild(document.createTextNode(content));
